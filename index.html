@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Text-to-Image Generator</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#0f172a;color:#fff;
+         display:flex;flex-direction:column;align-items:center;padding:30px}
+    input{width:min(500px,90vw);padding:12px;border-radius:8px;border:none;font-size:16px}
+    button{margin-top:12px;padding:12px 24px;border:none;border-radius:8px;
+           background:#6366f1;color:#fff;font-size:16px;cursor:pointer}
+    img{margin-top:20px;max-width:90vw;border-radius:12px;display:none}
+    #status{margin-top:15px}
+  </style>
+</head>
+<body>
+  <h1>AI Image Generator</h1>
+  <input id="prompt" placeholder="e.g. a castle on a cliff at sunset">
+  <button onclick="generate()">Generate</button>
+  <div id="status"></div>
+  <img id="result" alt="Generated image">
+
+<script>
+const MAX_TRIES = 3;
+
+function loadImage(url, timeoutMs){
+  return new Promise((resolve, reject) => {
+    const probe = new Image();
+    probe.referrerPolicy = "no-referrer";
+    const timer = setTimeout(() => { probe.src = ""; reject(new Error("timeout")); }, timeoutMs);
+    probe.onload = () => { clearTimeout(timer); resolve(url); };
+    probe.onerror = () => { clearTimeout(timer); reject(new Error("load failed")); };
+    probe.src = url;
+  });
+}
+
+async function generate(){
+  const prompt = document.getElementById("prompt").value;
+  const status = document.getElementById("status");
+  const img = document.getElementById("result");
+  img.style.display = "none";
+  status.textContent = "Generating...";
+
+  const res = await fetch("/generate", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({prompt})
+  });
+  const data = await res.json();
+  if(!res.ok){ status.textContent = data.error; return; }
+
+  for(let i = 1; i <= MAX_TRIES; i++){
+    const seed = data.seed + i;
+    const url = data.url.replace(/seed=\d+/, "seed=" + seed);
+    status.textContent = i === 1 ? "Generating..." : `Retrying (${i}/${MAX_TRIES})...`;
+    try{
+      await loadImage(url, 60000);
+      img.referrerPolicy = "no-referrer";
+      img.src = url;
+      img.style.display = "block";
+      status.textContent = "Seed: " + seed;
+      return;
+    }catch(e){ /* try next seed */ }
+  }
+  status.textContent = "The image service did not respond. Please try again in a minute.";
+}
+</script>
+</body>
+</html>
